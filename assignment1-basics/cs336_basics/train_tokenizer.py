@@ -30,5 +30,31 @@ def initialize_vocab(vocab: dict, special_tokens: list) -> dict[int, bytes]:
 
         return vocab
 
+def simple_pre_tokenization(chunk: str, special_tokens: list) -> dict[str, int]:
 
+    PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+
+    chunk_list = [chunk]
     
+    for iteration in range(len(special_tokens)):
+        chunk_tmp = list()
+        for chunk in chunk_list:
+            chunk = chunk.split(special_tokens[iteration])
+            chunk_tmp.extend(chunk)
+        chunk_list = chunk_tmp
+    
+    pre_token_count = dict()
+
+    for sub_chunk in chunk_list:
+
+        pre_tokens = re.findall(PAT,sub_chunk)
+
+        for pre_token in pre_tokens:
+                
+            if pre_token not in pre_token_count.keys():
+                pre_token_count[pre_token] = 1
+            else:
+                pre_token_count[pre_token] += 1
+
+    return pre_token_count
+
