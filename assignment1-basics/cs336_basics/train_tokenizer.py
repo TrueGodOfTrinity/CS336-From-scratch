@@ -1,4 +1,5 @@
 import regex as re
+import os
 INITIAL_VOCAB_SIZE = 256
 
 def initialize_byte_vocab(vocab: dict) -> dict[int, bytes]:
@@ -17,6 +18,8 @@ def add_special_tokens(vocab: dict) -> dict[int, bytes]:
 
 
 def initialize_vocab(vocab: dict, special_tokens: list) -> dict[int, bytes]:
+
+    """Initialize the vocabulary with all 256 byte values and any special tokens."""
 
     initialize_byte_vocab(vocab)
 
@@ -112,12 +115,14 @@ def select_best_pair(adj_token_pairs_count: dict) -> tuple[bytes, bytes] | None:
 
 def merge_token_pair(token_sequence: tuple, best_pair: tuple) -> tuple[bytes, ...]:
 
+    """Merge non-overlapping occurrences of the selected pair from left to right."""
+
     merged_token_pairs = list()
 
     index = 0
 
     while(index< len(token_sequence)):
-        if index + 1 < len(token_sequence) and (token_sequence[index], token_sequence[index + 1]) == best_pair:
+        if index + 1 < len(token_sequence) and (token_sequence[index], token_sequence[index + 1]) == best_pair: 
             merged_token_pair = token_sequence[index] + token_sequence[index + 1]
             merged_token_pairs.append(merged_token_pair)
             index += 2
@@ -132,6 +137,8 @@ def merge_token_pair(token_sequence: tuple, best_pair: tuple) -> tuple[bytes, ..
 
         
 def merge_token_sequences(token_sequences_count: dict, best_pair: tuple) -> dict[tuple[bytes, ...], int]:
+
+    """Merge the selected pair in all token sequences and aggregate their counts."""
 
     merged_token_sequences = dict()
 
@@ -154,6 +161,28 @@ def add_merged_token_into_vocab(merges: list, vocab: dict, best_pair: tuple) -> 
 
     merges.append(best_pair)
 
-
     return vocab, merges
 
+
+def train_bpe(input_path: str | os.PathLike, vocab_size: int, special_tokens: list[str]) ->tuple[dict[int, bytes], list[tuple[bytes, bytes]]]: 
+
+    vocab = dict()
+    merges = list()
+
+    vocab = initialize_vocab(vocab, special_tokens)
+
+    with open(input_path, "r", encoding="utf-8") as f:
+        corpus = f.read()
+
+    token_sequences_count, token_sequence = initialize_token_sequences(simple_pre_tokenization(corpus, special_tokens))
+
+    while(len(vocab) < vocab_size):       
+        best_pair = select_best_pair(count_adjacent_token_pairs(token_sequences_count))
+        if best_pair == None:
+            break
+        else:
+            merged_token_sequences = merge_token_sequences(token_sequences_count, best_pair)
+            token_sequences_count = merged_token_sequences # update the token_sequence_count
+            vocab, merges = add_merged_token_into_vocab(merges, vocab, best_pair)
+
+    return vocab, merges 
