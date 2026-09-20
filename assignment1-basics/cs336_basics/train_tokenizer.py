@@ -63,13 +63,13 @@ def simple_pre_tokenization(chunk: str, special_tokens: list) -> dict[str, int]:
     return pre_token_count
 
 
-def initialize_token_sequences(pre_token_count: dict) ->tuple[dict[tuple[bytes, ...], int], tuple[bytes, ...]]:
+def initialize_token_sequences(pre_token_count: dict) ->dict[tuple[bytes, ...], int]:
 
     encoded_pre_token_count = dict()
     for pre_token in pre_token_count.keys():
         encoded_pre_token_count.update({pre_token.encode("utf-8"): pre_token_count[pre_token]})
 
-    token_sequence = tuple()
+    token_sequence = tuple()  # 
     token_sequences_count = dict()
 
     for encoded_pre_token in encoded_pre_token_count.keys():
@@ -81,7 +81,7 @@ def initialize_token_sequences(pre_token_count: dict) ->tuple[dict[tuple[bytes, 
         token_sequence = tuple(encoded_pre_token_list)
         token_sequences_count.update({token_sequence: encoded_pre_token_count[encoded_pre_token]})
 
-    return token_sequences_count, token_sequence
+    return token_sequences_count
 
 
 def count_adjacent_token_pairs(token_sequences_count: dict) -> dict[tuple[bytes, bytes], int]:
@@ -100,11 +100,42 @@ def count_adjacent_token_pairs(token_sequences_count: dict) -> dict[tuple[bytes,
     return adj_token_pairs_count
 
 
+def count_pair_contributions(token_sequence:tuple, sequence_frequency: int) -> dict[tuple[bytes, bytes], int]:
+
+    pair_contributions = dict()
+
+    for index in range(len(token_sequence) - 1):
+        byte_pairs = (token_sequence[index], token_sequence[index + 1])
+        if (byte_pairs) not in pair_contributions:
+            pair_contributions[byte_pairs] = sequence_frequency
+        else:
+            pair_contributions[byte_pairs] += sequence_frequency
+
+    return pair_contributions
+
+
+def build_pair_index(sequences: list) -> dict[tuple[bytes, bytes], set[int]]:
+
+    pair_index = dict()
+    
+    for token_sequence_id, token_sequence in enumerate(sequences):
+        for index in range(len(token_sequence) - 1):
+            byte_pair = (token_sequence[index], token_sequence[index + 1])
+            if byte_pair not in pair_index.keys():
+                token_sequence_ids = set()
+                token_sequence_ids.add(token_sequence_id)
+                pair_index[byte_pair] = token_sequence_ids
+            else:
+                pair_index[byte_pair].add(token_sequence_id)
+                
+    return pair_index
+
+
 def select_best_pair(adj_token_pairs_count: dict) -> tuple[bytes, bytes] | None:
 
     try:
-        max_frequency = max(adj_token_pairs_count.values())
-        pairs = [pairs for pairs, frequency in adj_token_pairs_count.items() if frequency == max_frequency]
+        max_sequence_frequency = max(adj_token_pairs_count.values())
+        pairs = [pairs for pairs, sequence_frequency in adj_token_pairs_count.items() if sequence_frequency == max_sequence_frequency]
     except ValueError:
         return None 
     
@@ -136,22 +167,16 @@ def merge_token_pair(token_sequence: tuple, best_pair: tuple) -> tuple[bytes, ..
     return merged_token_pairs
 
         
-def merge_token_sequences(token_sequences_count: dict, best_pair: tuple) -> dict[tuple[bytes, ...], int]:
+def merge_token_sequences(sequences: list, sequence_ids: set, best_pair: tuple):
 
     """Merge the selected pair in all token sequences and aggregate their counts."""
+    # brand new version: aiming to decrease computational cost
 
-    merged_token_sequences = dict()
+    for token_sequence_id in sequence_ids:
+        merged_token_pair = merge_token_pair(sequences[token_sequence_id], best_pair)
+        sequences[token_sequence_id] = merged_token_pair
 
-    for token_sequence in token_sequences_count.keys():
-
-        merged_token_pairs = merge_token_pair(token_sequence, best_pair)
-
-        if merged_token_pairs not in merged_token_sequences.keys():
-            merged_token_sequences.update({merged_token_pairs: token_sequences_count[token_sequence]})
-        else:
-            merged_token_sequences[merged_token_pairs] += token_sequences_count[token_sequence]
-
-    return merged_token_sequences
+    return None
 
 
 def add_merged_token_into_vocab(merges: list, vocab: dict, best_pair: tuple) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
@@ -168,21 +193,77 @@ def train_bpe(input_path: str | os.PathLike, vocab_size: int, special_tokens: li
 
     vocab = dict()
     merges = list()
-
     vocab = initialize_vocab(vocab, special_tokens)
 
     with open(input_path, "r", encoding="utf-8") as f:
         corpus = f.read()
 
-    token_sequences_count, token_sequence = initialize_token_sequences(simple_pre_tokenization(corpus, special_tokens))
+    token_sequences_count = initialize_token_sequences(simple_pre_tokenization(corpus, special_tokens))
+
+    sequences = list()
+    sequence_frequencies = list()
+    for token_sequence, sequence_frequency in token_sequences_count.items():
+        sequences.append(token_sequence)
+        sequence_frequencies.append(sequence_frequency)
+    
+    # Build the reverse index once: each pair points to the sequence IDs that contain it.
+    pair_index = build_pair_index(sequences)
+
+    pair_counts = dict()
+    # Initialize the global pair counts from every sequence and its corpus frequency.
+    for index in range(len(sequences)):
+        pair_contributions = count_pair_contributions(sequences[index], sequence_frequencies[index])
+        for pair, count in pair_contributions.items():
+            pair_counts[pair] = pair_counts.get(pair, 0) + count
 
     while(len(vocab) < vocab_size):       
-        best_pair = select_best_pair(count_adjacent_token_pairs(token_sequences_count))
+        # Select the most frequent pair; select_best_pair also applies the tie-breaking rule.
+        best_pair = select_best_pair(pair_counts)
+       
         if best_pair == None:
             break
         else:
-            merged_token_sequences = merge_token_sequences(token_sequences_count, best_pair)
-            token_sequences_count = merged_token_sequences # update the token_sequence_count
+            # Copy the affected IDs because the index sets are updated below.
+            token_sequence_ids = pair_index[best_pair]
+            
+            temp_token_seq_ids = token_sequence_ids.copy()
+            # Remove old pair-index entries for the sequences that will change.
+            for index in temp_token_seq_ids:
+                pairs_list = list()
+                pairs_list = count_pair_contributions(sequences[index], sequence_frequencies[index]).keys()
+
+                for pair in pairs_list:
+                    pair_index[pair].remove(index)
+                    if pair_index[pair] == set():
+                        del pair_index[pair]
+
+            # Remove the old pair-count contributions of the affected sequences.
+            old_contributions = dict()
+            for index in temp_token_seq_ids:
+                pair_contributions = count_pair_contributions(sequences[index], sequence_frequencies[index])
+                for pair, count in pair_contributions.items():
+                    old_contributions[pair] = old_contributions.get(pair, 0) + count
+            for pair in old_contributions:
+                pair_counts[pair] -= old_contributions[pair]            
+                if pair_counts[pair] == 0:
+                    del pair_counts[pair]
+                       
+            # Merge only the affected sequences; all other sequences remain unchanged.
+            merge_token_sequences(sequences, temp_token_seq_ids, best_pair)
+
+            # Add the new pair counts and pair-index entries for the updated sequences.
+            for index in temp_token_seq_ids: 
+                pair_contributions = count_pair_contributions(sequences[index], sequence_frequencies[index])
+                for pair, count in pair_contributions.items():
+                    pair_counts[pair] = pair_counts.get(pair, 0) + count
+
+                    if pair not in pair_index:
+                        pair_index[pair] = set()
+                        pair_index[pair].add(index)
+                    else:
+                        pair_index[pair].add(index)            
+
+            # Record the newly created token and the merge operation.
             vocab, merges = add_merged_token_into_vocab(merges, vocab, best_pair)
 
-    return vocab, merges 
+    return vocab, merges
