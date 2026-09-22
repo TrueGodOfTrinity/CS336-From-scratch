@@ -69,7 +69,7 @@ def initialize_token_sequences(pre_token_count: dict) ->dict[tuple[bytes, ...], 
     for pre_token in pre_token_count.keys():
         encoded_pre_token_count.update({pre_token.encode("utf-8"): pre_token_count[pre_token]})
 
-    token_sequence = tuple()  # 
+    token_sequence = tuple()  
     token_sequences_count = dict()
 
     for encoded_pre_token in encoded_pre_token_count.keys():
