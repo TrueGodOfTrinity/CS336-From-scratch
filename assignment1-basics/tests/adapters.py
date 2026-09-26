@@ -5,8 +5,11 @@ from collections.abc import Iterable
 from typing import IO, Any, BinaryIO
 from cs336_basics.train_tokenizer import train_bpe
 from cs336_basics.tokenizer import Tokenizer
+from cs336_basics.model import Linear
+from cs336_basics.model import Embedding
 import numpy.typing as npt
 import torch
+import torch.nn
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
@@ -29,8 +32,12 @@ def run_linear(
     Returns:
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
+    
 
-    raise NotImplementedError
+    linear = Linear(d_in, d_out, device=weights.device, dtype=weights.dtype)
+    state_dict = {"weight": weights}
+    linear.load_state_dict(state_dict)
+    return linear.forward(in_features)
 
 
 def run_embedding(
@@ -51,8 +58,10 @@ def run_embedding(
     Returns:
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
-
-    raise NotImplementedError
+    embedding = Embedding(vocab_size, d_model, device=weights.device, dtype=weights.dtype)
+    state_dict = {"weight": weights}
+    embedding.load_state_dict(state_dict)
+    return embedding.forward(token_ids)
 
 
 def run_swiglu(
