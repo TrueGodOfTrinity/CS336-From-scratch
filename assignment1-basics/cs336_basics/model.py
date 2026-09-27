@@ -2,6 +2,11 @@ import torch
 import torch.nn as nn
 import math
 
+
+def silu(x: torch.Tensor) -> torch.Tensor:
+    
+    return x / (1 + torch.exp( - x))
+
 class Linear(nn.Module):
 
 
@@ -74,3 +79,72 @@ class Embedding(nn.Module):
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
         
         return self.weight[token_ids]
+    
+
+class RMSNorm(nn.Module):
+    
+    
+    def __init__(self, 
+                d_model: int,
+                eps: float = 1e-5,
+                device: torch.device | None = None,
+                dtype: torch.dtype | None = None,  
+    ):
+        super().__init__()
+        self.d_model = d_model
+        self.eps = eps
+        self.device = device 
+        self.dtype = dtype 
+        
+        self.weight = nn.Parameter(
+            torch.empty(
+                d_model,
+                device=self.device,
+                dtype=self.dtype
+            )
+        )
+        nn.init.ones_(self.weight)
+                        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x.shape() = [batch_size, seq_len, d_model]
+        original_dtype = x.dtype
+        x = x.to(torch.float32)
+        
+        mean_square = x.pow(2).mean(dim=-1, keepdim=True)
+        x_rms = torch.sqrt(mean_square + self.eps)
+        x_normalized = x / x_rms
+        output = x_normalized * self.weight 
+        
+        return  output.to(original_dtype)
+        
+        
+class SwiGLU(nn.Module):
+    
+    
+    def __init__(self, 
+                d_model: int,
+                d_ff: int,
+                device: torch.device | None = None,
+                dtype: torch.dtype | None = None,             
+    ):
+        super().__init__()
+        self.d_model = d_model
+        self.d_ff = d_ff
+        self.device = device
+        self.dtype = dtype
+        
+        # initialize the layers. Incidentally, the weights are included.
+        self.w1 = Linear(self.d_model, self.d_ff, self.device, self.dtype)
+        self.w2 = Linear(self.d_ff, self.d_model, self.device, self.dtype)
+        self.w3 = Linear(self.d_model, self.d_ff, self.device, self.dtype)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Call submodules directly so PyTorch runs forward through nn.Module's call mechanism, 
+        preserving registered hooks.
+        """
+        glu = silu(self.w1(x)) * self.w3(x)    
+        result = self.w2(glu)                  
+        return result 
+    
+    

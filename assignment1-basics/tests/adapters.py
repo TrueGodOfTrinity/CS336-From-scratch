@@ -7,6 +7,9 @@ from cs336_basics.train_tokenizer import train_bpe
 from cs336_basics.tokenizer import Tokenizer
 from cs336_basics.model import Linear
 from cs336_basics.model import Embedding
+from cs336_basics.model import RMSNorm
+from cs336_basics.model import silu
+from cs336_basics.model import SwiGLU
 import numpy.typing as npt
 import torch
 import torch.nn
@@ -93,9 +96,14 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
-    raise NotImplementedError
-
-
+    
+    swiglu = SwiGLU(d_model, d_ff, device=w1_weight.device, dtype=w1_weight.dtype)
+    state_dict = {"w1.weight" : w1_weight, "w2.weight": w2_weight, "w3.weight": w3_weight}
+    swiglu.load_state_dict(state_dict)
+    return swiglu.forward(in_features)
+    
+    
+    
 def run_scaled_dot_product_attention(
     Q: Float[Tensor, " ... queries d_k"],
     K: Float[Tensor, " ... keys d_k"],
@@ -388,7 +396,12 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    raise NotImplementedError
+    
+    rms_norm = RMSNorm(d_model, eps, device=weights.device, dtype=weights.dtype)
+    state_dict = {"weight": weights}
+    rms_norm.load_state_dict(state_dict)
+    return rms_norm.forward(in_features)
+    
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
@@ -402,7 +415,7 @@ def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
         Float[Tensor,"..."]: of with the same shape as `in_features` with the output of applying
         SiLU to each element.
     """
-    raise NotImplementedError
+    return silu(in_features)
 
 
 def run_get_batch(
