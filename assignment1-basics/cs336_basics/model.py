@@ -77,7 +77,7 @@ class Embedding(nn.Module):
         )
         
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
-        
+        # [batch_size, seq_len] -> [batch_size, seq_len, d_model]
         return self.weight[token_ids]
     
 
@@ -146,5 +146,22 @@ class SwiGLU(nn.Module):
         glu = silu(self.w1(x)) * self.w3(x)    
         result = self.w2(glu)                  
         return result 
-    
-    
+
+
+class RotaryPositionalEmbedding(nn.Module):
+
+
+    def __init__(self, 
+                 theta: float, 
+                 d_k: int, 
+                 max_seq_len: int, 
+                 device: torch.device | None = None
+    ):
+        super().__init__()
+        self.theta = theta
+        self.d_k = d_k # dimention of key and query vectors
+        self.max_seq_len = max_seq_len
+        self.device = device 
+
+    def forward(self, x: torch.Tensor, token_position: torch.Tensor) -> torch.Tensor:
+        pass
