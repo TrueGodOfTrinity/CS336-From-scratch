@@ -223,3 +223,112 @@ class RotaryPositionalEmbedding(nn.Module):
         return torch.stack((rotated_x_even, rotated_x_odd), dim=-1).flatten(start_dim=-2)
         
 
+class CausalMultiHeadSelfAttentionWithoutRoPE(nn.Module):
+
+    def __init__(self, 
+            d_model: int,
+            num_heads: int,
+            device: torch.device | None = None,
+            dtype: torch.dtype | None = None,
+    ):
+        super().__init__()
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.device = device
+        self.dtype = dtype
+
+        self.w_q = Linear(d_model, d_model, device, dtype)
+        self.w_k = Linear(d_model, d_model, device, dtype)
+        self.w_v = Linear(d_model, d_model, device, dtype)
+        self.w_o = Linear(d_model, d_model, device, dtype)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x.shape = [batch_size, seq_len, d_model]
+        q = self.w_q(x)
+        k = self.w_k(x)
+        v = self.w_v(x)
+
+        q = q.reshape(*q.shape[:-1], self.num_heads, self.d_model // self.num_heads) 
+        q = q.transpose(-3, -2) #reshape only keeps their linear order
+        k = k.reshape(*k.shape[:-1], self.num_heads, self.d_model // self.num_heads)
+        k = k.transpose(-3, -2)
+        v = v.reshape(*v.shape[:-1], self.num_heads, self.d_model // self.num_heads)
+        v = v.transpose(-3, -2)
+
+        causal_mask = torch.ones(
+            x.shape[-2],
+            x.shape[-2],
+            device=x.device,
+            dtype=torch.bool
+        )
+        causal_mask = torch.tril(causal_mask, diagonal=0)
+
+        head = scaled_dot_product_attention(q, k, v, causal_mask)
+        heads = self.w_o(head.transpose(-2, -3).flatten(-2,-1))
+        # heads.shape = [batch_size, seq_len, d_model]
+        return heads
+
+
+class CausalMultiHeadSelfAttention(nn.Module):
+
+    def __init__(self, 
+            d_model: int,
+            num_heads: int,
+            max_seq_len: int,
+            theta: float,
+            device: torch.device | None = None,
+            dtype: torch.dtype | None = None,
+    ):
+        super().__init__()
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.max_seq_len = max_seq_len
+        self.theta = theta
+        self.device = device
+        self.dtype = dtype
+
+        self.w_q = Linear(d_model, d_model, device, dtype)
+        self.w_k = Linear(d_model, d_model, device, dtype)
+        self.w_v = Linear(d_model, d_model, device, dtype)
+        self.w_o = Linear(d_model, d_model, device, dtype)
+        self.positional_embed = RotaryPositionalEmbedding(theta, d_model // num_heads, max_seq_len, device)
+
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None) -> torch.Tensor:
+        # x.shape = [batch_size, seq_len, d_model]
+        q = self.w_q(x)
+        k = self.w_k(x)
+        v = self.w_v(x)
+
+        q = q.reshape(*q.shape[:-1], self.num_heads, self.d_model // self.num_heads) 
+        q = q.transpose(-3, -2) #reshape only keeps their linear order
+        k = k.reshape(*k.shape[:-1], self.num_heads, self.d_model // self.num_heads)
+        k = k.transpose(-3, -2)
+        v = v.reshape(*v.shape[:-1], self.num_heads, self.d_model // self.num_heads)
+        v = v.transpose(-3, -2)
+
+        causal_mask = torch.ones(
+            x.shape[-2],
+            x.shape[-2],
+            device=x.device,
+            dtype=torch.bool
+        )
+        causal_mask = torch.tril(causal_mask, diagonal=0)
+
+        if token_positions is None:
+            token_positions = torch.arange(
+                x.shape[-2],
+                device=x.device,
+                dtype=torch.long,
+            ) # token_positon.shape = [seq_len, ]
+        if token_positions.ndim == 2:
+            token_positions = token_positions.unsqueeze(-2)
+        # if token_position.shape = [batch_size, seq_len], we should tranform it into [B, 1, L]
+        positional_q = self.positional_embed(q, token_positions)
+        positional_k = self.positional_embed(k, token_positions)
+
+        head = scaled_dot_product_attention(positional_q, positional_k, v, causal_mask)
+        heads = self.w_o(head.transpose(-2, -3).flatten(-2,-1))
+        # heads.shape = [batch_size, seq_len, d_model]
+        return heads
+
+        

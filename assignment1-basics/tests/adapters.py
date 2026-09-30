@@ -14,6 +14,7 @@ from cs336_basics.model import softmax
 from cs336_basics.model import scaled_dot_product_attention
 from cs336_basics.model import SwiGLU
 from cs336_basics.model import RotaryPositionalEmbedding
+from cs336_basics.model import CausalMultiHeadSelfAttention, CausalMultiHeadSelfAttentionWithoutRoPE
 import numpy.typing as npt
 import torch
 import torch.nn
@@ -160,7 +161,10 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    multi_head_self_attention = CausalMultiHeadSelfAttentionWithoutRoPE(d_model, num_heads, in_features.device, in_features.dtype)
+    state_dict = {"w_q.weight": q_proj_weight, "w_k.weight": k_proj_weight, "w_v.weight": v_proj_weight, "w_o.weight": o_proj_weight}
+    multi_head_self_attention.load_state_dict(state_dict)
+    return multi_head_self_attention.forward(in_features)
 
 
 def run_multihead_self_attention_with_rope(
@@ -200,7 +204,10 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    multi_head_self_attention = CausalMultiHeadSelfAttention(d_model, num_heads, max_seq_len, theta, in_features.device, in_features.dtype)
+    state_dict = {"w_q.weight": q_proj_weight, "w_k.weight": k_proj_weight, "w_v.weight": v_proj_weight, "w_o.weight": o_proj_weight}
+    multi_head_self_attention.load_state_dict(state_dict)
+    return multi_head_self_attention.forward(in_features, token_positions)
 
 
 def run_rope(
@@ -226,7 +233,7 @@ def run_rope(
     rope = RotaryPositionalEmbedding(theta, d_k, max_seq_len, device=in_query_or_key.device)
 
 
-    return  rope.forward(in_query_or_key, token_positions)
+    return rope.forward(in_query_or_key, token_positions)
 
 
 def run_transformer_block(
