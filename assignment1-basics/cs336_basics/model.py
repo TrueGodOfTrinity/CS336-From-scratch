@@ -7,6 +7,29 @@ def silu(x: torch.Tensor) -> torch.Tensor:
     
     return x / (1 + torch.exp( - x))
 
+
+def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
+
+    max_values = x.max(dim=dim, keepdim=True).values
+    shifted_x = x - max_values
+
+    return torch.exp(shifted_x) / torch.sum(torch.exp(shifted_x), dim=dim, keepdim=True)
+
+
+def scaled_dot_product_attention(queries: torch.Tensor, 
+                                keys: torch.Tensor, 
+                                values: torch.Tensor, 
+                                mask:torch.Tensor | None = None,
+) -> torch.Tensor:
+    # q,k.shape = [batch_size, ..., seq_len, d_k]; v.shape = [batch_size, ..., seq_len, d_v]
+    # mask.shape = [seq_len, seq_len]
+    scores = queries @ keys.transpose(-2, -1) / math.sqrt(queries.shape[-1])
+    if mask is not None:
+        scores = scores.masked_fill(~mask, float("-inf"))
+    attention = softmax(scores, dim=-1) @ values
+    return attention
+
+
 class Linear(nn.Module):
 
 
@@ -199,4 +222,4 @@ class RotaryPositionalEmbedding(nn.Module):
         # [..., d_k/2] -> [..., d_k/2, 2] -> [..., d_k]
         return torch.stack((rotated_x_even, rotated_x_odd), dim=-1).flatten(start_dim=-2)
         
- 
+
