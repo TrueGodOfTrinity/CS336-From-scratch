@@ -15,6 +15,7 @@ from cs336_basics.model import scaled_dot_product_attention
 from cs336_basics.model import SwiGLU
 from cs336_basics.model import RotaryPositionalEmbedding
 from cs336_basics.model import CausalMultiHeadSelfAttention, CausalMultiHeadSelfAttentionWithoutRoPE
+from cs336_basics.model import TransformerBlock
 import numpy.typing as npt
 import torch
 import torch.nn
@@ -306,7 +307,21 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+
+    transformer_block = TransformerBlock(d_model, num_heads, d_ff, theta, max_seq_len, 0.00001, in_features.device, in_features.dtype)
+
+    state_dict = {"layerNorm_ln1.weight": weights["ln1.weight"], 
+                  "layerNorm_ln2.weight":  weights["ln2.weight"],
+                  "MHSA.w_q.weight": weights["attn.q_proj.weight"],
+                  "MHSA.w_k.weight": weights["attn.k_proj.weight"],
+                  "MHSA.w_v.weight": weights["attn.v_proj.weight"],
+                  "MHSA.w_o.weight": weights["attn.output_proj.weight"],
+                  "FeedForwardNetwork.w1.weight": weights["ffn.w1.weight"],
+                  "FeedForwardNetwork.w2.weight": weights["ffn.w2.weight"],
+                  "FeedForwardNetwork.w3.weight": weights["ffn.w3.weight"]
+                  }
+    transformer_block.load_state_dict(state_dict)
+    return transformer_block(in_features)
 
 
 def run_transformer_lm(

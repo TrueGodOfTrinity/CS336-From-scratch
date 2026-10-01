@@ -105,7 +105,7 @@ class Embedding(nn.Module):
     
 
 class RMSNorm(nn.Module):
-    
+    # layerNorm
     
     def __init__(self, 
                 d_model: int,
@@ -224,7 +224,7 @@ class RotaryPositionalEmbedding(nn.Module):
         
 
 class CausalMultiHeadSelfAttentionWithoutRoPE(nn.Module):
-
+    # only use for test MHSA without the RoPE
     def __init__(self, 
             d_model: int,
             num_heads: int,
@@ -331,4 +331,41 @@ class CausalMultiHeadSelfAttention(nn.Module):
         # heads.shape = [batch_size, seq_len, d_model]
         return heads
 
+
+class TransformerBlock(nn.Module):
+
+    def __init__(self, 
+                d_model: int,
+                num_heads: int,
+                d_ff: int,
+                theta: float,
+                max_seq_len: int,
+                eps: float = 1e-5,
+                device: torch.device | None = None,
+                dtype: torch.dtype | None = None,
+    
+    ):
+        super().__init__()
+        self.d_model = d_model 
+        self.num_heads = num_heads
+        self.d_ff = d_ff
+        self.max_seq_len = max_seq_len
+        self.eps = eps
+        self.theta = theta
+        self.device = device
+        self.dtype = dtype
+
+        self.layerNorm_ln1 = RMSNorm(self.d_model, self.eps, self.device, self.dtype)
+        self.layerNorm_ln2 = RMSNorm(self.d_model, self.eps, self.device, self.dtype)
+        self.MHSA = CausalMultiHeadSelfAttention(self.d_model, self.num_heads, self.max_seq_len, self.theta, self.device, self.dtype)
+        self.FeedForwardNetwork = SwiGLU(self.d_model, self.d_ff, self.device, self.dtype)
         
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x.shape = [batch_size, seq_len, d_model]
+        ln1 = self.layerNorm_ln1(x)
+        Attention = self.MHSA(ln1)
+        middle_output = x + Attention
+
+        ln2 =self.layerNorm_ln2(middle_output)
+        FFN = self.FeedForwardNetwork(ln2)
+        return middle_output + FFN
