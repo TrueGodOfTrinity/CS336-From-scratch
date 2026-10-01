@@ -15,7 +15,7 @@ from cs336_basics.model import scaled_dot_product_attention
 from cs336_basics.model import SwiGLU
 from cs336_basics.model import RotaryPositionalEmbedding
 from cs336_basics.model import CausalMultiHeadSelfAttention, CausalMultiHeadSelfAttentionWithoutRoPE
-from cs336_basics.model import TransformerBlock
+from cs336_basics.model import TransformerBlock, TransformerLM
 import numpy.typing as npt
 import torch
 import torch.nn
@@ -46,7 +46,7 @@ def run_linear(
     linear = Linear(d_in, d_out, device=weights.device, dtype=weights.dtype)
     state_dict = {"weight": weights}
     linear.load_state_dict(state_dict)
-    return linear.forward(in_features)
+    return linear(in_features)
 
 
 def run_embedding(
@@ -70,7 +70,7 @@ def run_embedding(
     embedding = Embedding(vocab_size, d_model, device=weights.device, dtype=weights.dtype)
     state_dict = {"weight": weights}
     embedding.load_state_dict(state_dict)
-    return embedding.forward(token_ids)
+    return embedding(token_ids)
 
 
 def run_swiglu(
@@ -106,7 +106,7 @@ def run_swiglu(
     swiglu = SwiGLU(d_model, d_ff, device=w1_weight.device, dtype=w1_weight.dtype)
     state_dict = {"w1.weight" : w1_weight, "w2.weight": w2_weight, "w3.weight": w3_weight}
     swiglu.load_state_dict(state_dict)
-    return swiglu.forward(in_features)
+    return swiglu(in_features)
     
     
     
@@ -165,7 +165,7 @@ def run_multihead_self_attention(
     multi_head_self_attention = CausalMultiHeadSelfAttentionWithoutRoPE(d_model, num_heads, in_features.device, in_features.dtype)
     state_dict = {"w_q.weight": q_proj_weight, "w_k.weight": k_proj_weight, "w_v.weight": v_proj_weight, "w_o.weight": o_proj_weight}
     multi_head_self_attention.load_state_dict(state_dict)
-    return multi_head_self_attention.forward(in_features)
+    return multi_head_self_attention(in_features)
 
 
 def run_multihead_self_attention_with_rope(
@@ -234,7 +234,7 @@ def run_rope(
     rope = RotaryPositionalEmbedding(theta, d_k, max_seq_len, device=in_query_or_key.device)
 
 
-    return rope.forward(in_query_or_key, token_positions)
+    return rope(in_query_or_key, token_positions)
 
 
 def run_transformer_block(
@@ -310,16 +310,17 @@ def run_transformer_block(
 
     transformer_block = TransformerBlock(d_model, num_heads, d_ff, theta, max_seq_len, 0.00001, in_features.device, in_features.dtype)
 
-    state_dict = {"layerNorm_ln1.weight": weights["ln1.weight"], 
-                  "layerNorm_ln2.weight":  weights["ln2.weight"],
-                  "MHSA.w_q.weight": weights["attn.q_proj.weight"],
-                  "MHSA.w_k.weight": weights["attn.k_proj.weight"],
-                  "MHSA.w_v.weight": weights["attn.v_proj.weight"],
-                  "MHSA.w_o.weight": weights["attn.output_proj.weight"],
-                  "FeedForwardNetwork.w1.weight": weights["ffn.w1.weight"],
-                  "FeedForwardNetwork.w2.weight": weights["ffn.w2.weight"],
-                  "FeedForwardNetwork.w3.weight": weights["ffn.w3.weight"]
-                  }
+    state_dict = {
+        "layerNorm_ln1.weight": weights["ln1.weight"], 
+        "layerNorm_ln2.weight":  weights["ln2.weight"],
+        "MHSA.w_q.weight": weights["attn.q_proj.weight"],
+        "MHSA.w_k.weight": weights["attn.k_proj.weight"],
+        "MHSA.w_v.weight": weights["attn.v_proj.weight"],
+        "MHSA.w_o.weight": weights["attn.output_proj.weight"],
+        "FeedForwardNetwork.w1.weight": weights["ffn.w1.weight"],
+        "FeedForwardNetwork.w2.weight": weights["ffn.w2.weight"],
+        "FeedForwardNetwork.w3.weight": weights["ffn.w3.weight"]
+    }
     transformer_block.load_state_dict(state_dict)
     return transformer_block(in_features)
 
@@ -403,7 +404,29 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+
+
+    LM = TransformerLM(d_model, num_heads, d_ff, rope_theta, vocab_size, context_length, num_layers, 0.00001,in_indices.device, torch.float32)
+
+    state_dict = {
+        "embedding_layer.weight": weights["token_embeddings.weight"],
+        "layerNorm.weight": weights["ln_final.weight"],
+        "output_embeddings.weight": weights["lm_head.weight"],
+    }
+
+    for idx in range(num_layers):
+        state_dict.update({f"transformer_blocks.{idx}.layerNorm_ln1.weight": weights[f"layers.{idx}.ln1.weight"]})
+        state_dict.update({f"transformer_blocks.{idx}.layerNorm_ln2.weight": weights[f"layers.{idx}.ln2.weight"]})
+        state_dict.update({f"transformer_blocks.{idx}.MHSA.w_q.weight": weights[f"layers.{idx}.attn.q_proj.weight"]})
+        state_dict.update({f"transformer_blocks.{idx}.MHSA.w_k.weight": weights[f"layers.{idx}.attn.k_proj.weight"]})
+        state_dict.update({f"transformer_blocks.{idx}.MHSA.w_v.weight": weights[f"layers.{idx}.attn.v_proj.weight"]})
+        state_dict.update({f"transformer_blocks.{idx}.MHSA.w_o.weight": weights[f"layers.{idx}.attn.output_proj.weight"]})
+        state_dict.update({f"transformer_blocks.{idx}.FeedForwardNetwork.w1.weight": weights[f"layers.{idx}.ffn.w1.weight"]})
+        state_dict.update({f"transformer_blocks.{idx}.FeedForwardNetwork.w2.weight": weights[f"layers.{idx}.ffn.w2.weight"]})
+        state_dict.update({f"transformer_blocks.{idx}.FeedForwardNetwork.w3.weight": weights[f"layers.{idx}.ffn.w3.weight"]})
+
+    LM.load_state_dict(state_dict)
+    return LM(in_indices)
 
 
 def run_rmsnorm(

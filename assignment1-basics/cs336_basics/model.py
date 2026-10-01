@@ -369,3 +369,52 @@ class TransformerBlock(nn.Module):
         ln2 =self.layerNorm_ln2(middle_output)
         FFN = self.FeedForwardNetwork(ln2)
         return middle_output + FFN
+
+
+class TransformerLM(nn.Module):
+
+
+    def __init__(self, 
+                d_model: int,
+                num_heads: int,
+                d_ff: int,
+                theta: float,
+                vocab_size: int,
+                context_length: int,
+                num_layers: int,
+                eps: float = 1e-5,
+                device: torch.device | None = None,
+                dtype: torch.dtype | None = None,                
+                ):
+        super().__init__()
+        self.d_model = d_model 
+        self.num_heads = num_heads
+        self.d_ff = d_ff
+        self.eps = eps
+        self.vocab_size = vocab_size
+        self.context_length = context_length
+        self.num_layers = num_layers
+        self.theta = theta
+        self.device = device
+        self.dtype = dtype
+        # modules
+        self.embedding_layer = Embedding(vocab_size, d_model, device, dtype)
+        self.transformer_blocks = nn.ModuleList([
+            TransformerBlock(d_model, num_heads, d_ff, theta, context_length, eps, device, dtype) 
+            for _ in range(num_layers)   
+        ])
+        self.layerNorm = RMSNorm(d_model, eps, device, dtype)
+        self.output_embeddings = Linear(d_model, vocab_size, device, dtype)
+
+    def forward(self, token_ids: torch.Tensor) -> torch.Tensor: # return: logits
+        # token_ids.shape = [batch_size, seq_len]
+        embeddings = self.embedding_layer(token_ids)
+        # embeddings.shape = [batch_size, seq_len, d_model]
+        hidden_state = embeddings
+        for transformer_block in self.transformer_blocks:
+            hidden_state = transformer_block(hidden_state)
+        normalized_attn = self.layerNorm(hidden_state)
+        output_logits = self.output_embeddings(normalized_attn)
+        #output_logits.shape = [batch_size, seq_len, vocab_size]
+
+        return output_logits
