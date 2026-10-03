@@ -19,6 +19,7 @@ from cs336_basics.model import TransformerBlock, TransformerLM
 
 
 from cs336_basics.losses import cross_entropy_loss
+from cs336_basics.optimizer import AdamW
 import numpy.typing as npt
 import torch
 import torch.nn
@@ -547,7 +548,7 @@ def get_adamw_cls() -> Any:
     """
     Returns a torch.optim.Optimizer that implements AdamW.
     """
-    raise NotImplementedError
+    return AdamW
 
 
 def run_get_lr_cosine_schedule(
