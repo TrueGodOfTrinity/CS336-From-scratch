@@ -3,6 +3,43 @@ import math
 from collections.abc import Callable, Iterable
 from typing import Optional
 
+def cosine_learning_rate_schedule(t , lr_max, lr_min, t_w, t_c):
+
+    # t_w: number of warming up iteration
+    # t_c: the last number of cosine annealing
+
+    # warm up
+    if t < t_w:  
+        lr = t * lr_max /t_w
+    # cosine annealing
+    if t >= t_w and t <= t_c:
+        lr = lr_min + 0.5 * (1 + math.cos((t - t_w) * math.pi / (t_c - t_w))) * (lr_max - lr_min)
+    # post annealing
+    if t > t_c:
+        lr = lr_min
+
+    return lr
+
+
+def gradient_clipping(params: Iterable[torch.nn.Parameter], max_l2_norm: float):
+
+    square_l2_norm_grad_ = torch.zeros(())
+    _params = list()
+    for param in params:
+        _params.append(param)
+        if param.grad is None:
+            continue
+        grad_sum = torch.sum(param.grad ** 2)
+        square_l2_norm_grad_ += grad_sum
+    l2_norm_grad = torch.sqrt(square_l2_norm_grad_)
+
+    for param in _params:
+        if param.grad is None or l2_norm_grad <= max_l2_norm:
+            continue
+        else:
+            param.grad *= max_l2_norm / (l2_norm_grad + 1e-6)
+
+    
 class AdamW(torch.optim.Optimizer):
 
     def __init__(self, params, lr, betas: tuple, eps, weight_decay):
@@ -47,3 +84,5 @@ class AdamW(torch.optim.Optimizer):
                 param.data -= lr_t * state["m"] / (torch.sqrt(state["v"]) + eps)
                 state["t"] = t + 1
         return loss
+
+
