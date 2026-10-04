@@ -11,3 +11,9 @@
 
 
 **Announcement: I only use Codex for tutorial!**
+
+### Progress
+
+- **2026-10-04 — Assignment 1:** Completed the core implementations and passed the test suite, covering tokenization, Transformer modeling, and training utilities. 🎉
+
+![Assignment 1 test results](assets/assignment1_test.png)
