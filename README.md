@@ -1,5 +1,5 @@
 # CS336-FROM-SCRATCH
-***
+
 
 ## 奋战一学期，造个GPT！
 先说一下我开这个repo的目的。之前Supervisor说我还需要把research基础打好。   
