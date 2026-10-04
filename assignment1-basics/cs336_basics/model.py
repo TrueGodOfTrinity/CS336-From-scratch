@@ -300,7 +300,7 @@ class CausalMultiHeadSelfAttention(nn.Module):
         v = self.w_v(x)
 
         q = q.reshape(*q.shape[:-1], self.num_heads, self.d_model // self.num_heads) 
-        q = q.transpose(-3, -2) #reshape only keeps their linear order
+        q = q.transpose(-3, -2) # reshape only keeps their linear order
         k = k.reshape(*k.shape[:-1], self.num_heads, self.d_model // self.num_heads)
         k = k.transpose(-3, -2)
         v = v.reshape(*v.shape[:-1], self.num_heads, self.d_model // self.num_heads)
